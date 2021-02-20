@@ -41,6 +41,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     Mat hierarchy;
     Mat dilateKernel;
     Mat layout;
+    String lastPianoKey = null;
 
     //view holder
     CameraBridgeViewBase cameraBridgeViewBase;
@@ -113,11 +114,75 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
     }
 
+    void handleKeyChange(String pianoKey) {
+        Log.d("pkey", "" + pianoKey);
+        // TODO: send the piano key to arduino
+    }
+
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         Mat dst = inputFrame.rgba();
         Imgproc.cvtColor(dst, dst, Imgproc.COLOR_RGBA2RGB);
 
+        this.updateLayout(inputFrame);
+        int[] coords = this.updateFinger(dst.clone());
+        String pianoKey = null;
+        if (coords != null) {
+            Log.d("coords", Arrays.toString(coords));
+            pianoKey = getPianoKey(coords[0], coords[1]);
+        }
+
+        if (pianoKey == null) {
+            pianoKey = "T";
+        } else {
+            pianoKey = pianoKey
+                    .replace("C#", "Y")
+                    .replace("D#", "U")
+                    .replace("F#", "I")
+                    .replace("G#", "O")
+                    .replace("A#", "P");
+        }
+        if (!pianoKey.equals(lastPianoKey)) {
+            this.handleKeyChange(pianoKey);
+        }
+        lastPianoKey = pianoKey;
+
+        Core.add(dst, layout, dst);
+        return dst;
+    }
+
+    /**
+     * @param src
+     * @return bottommost finger pixel coordinates
+     */
+    int[] updateFinger(Mat src) {
+        int width = src.cols();
+        int height = src.rows();
+        Imgproc.cvtColor(src, src, Imgproc.COLOR_RGBA2RGB);
+        Imgproc.GaussianBlur(src, src, new Size(23, 23), 0, 0);
+
+        int factor = 32;
+        int newWidth = width / factor;
+        int newHeight = height / factor;
+        Imgproc.resize(src, src, new Size(newWidth, newHeight));
+
+        for (int row = newHeight - 1; row >= 0; row--) {
+            for (int col = 0; col < newWidth; col++) {
+                double r = layout.get(row * factor, col * factor)[0];
+                if (r == 0) continue;
+                double rgb[] = src.get(row, col);
+                double avg = Arrays.stream(rgb).average().orElse(Double.NaN);
+                double diff = Arrays.stream(rgb).map(v -> Math.abs(v - avg)).sum();
+                if (diff < 50) continue;
+                Log.d("rgb", Arrays.toString(rgb));
+                return new int[]{row * factor, col * factor};
+            }
+        }
+
+        return null;
+    }
+
+    void updateLayout(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
         Mat gray = inputFrame.gray();
 
         Imgproc.blur(gray, gray, new Size(BLUR_SIZE, 3));
@@ -131,43 +196,32 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
         int minPianoArea = (int) (gray.width() * gray.height() * MIN_PIANO_AREA_RATIO);
         Point[] vertices = this.getPianoVertices(contours, minPianoArea);
-        if (vertices != null) {
-            layout.setTo(new Scalar(0, 0, 0));
+        if (vertices == null) return;
 
-            MatOfPoint mat = new MatOfPoint(vertices);
-            Imgproc.fillPoly(layout, Collections.singletonList(mat), new Scalar(BLACK_KEY_R, 255, 0));
+        layout.setTo(new Scalar(0, 0, 0));
 
-            Arrays.sort(vertices, (p1, p2) -> (int) (p1.x - p2.x));
-            int leftX = (int) vertices[1].x; // top left x
-            int rightX = (int) vertices[2].x; // top right x
-            int whiteKeyWidth = (rightX - leftX) / WHITE_KEYS;
+        MatOfPoint mat = new MatOfPoint(vertices);
+        Imgproc.fillPoly(layout, Collections.singletonList(mat), new Scalar(BLACK_KEY_R, 255, 0));
 
-            Arrays.sort(vertices, (p1, p2) -> (int) (p1.y - p2.y));
-            int topY = (int) vertices[1].y; // greater y between top left and top right
-            int bottomY = (int) vertices[2].y; // lesser y between bottom left and bottom right
+        Arrays.sort(vertices, (p1, p2) -> (int) (p1.x - p2.x));
+        int leftX = (int) vertices[1].x; // top left x
+        int rightX = (int) vertices[2].x; // top right x
+        int whiteKeyWidth = (rightX - leftX) / WHITE_KEYS;
 
-            Log.d("vertices", String.format("[%d, %d], %d", leftX, rightX, topY));
+        Arrays.sort(vertices, (p1, p2) -> (int) (p1.y - p2.y));
+        int topY = (int) vertices[1].y; // greater y between top left and top right
+        int bottomY = (int) vertices[2].y; // lesser y between bottom left and bottom right
 
-            Core.copyMakeBorder(cannyOutput, mask, 1, 1, 1, 1, Core.BORDER_CONSTANT, new Scalar(255));
+        Core.copyMakeBorder(cannyOutput, mask, 1, 1, 1, 1, Core.BORDER_CONSTANT, new Scalar(255));
 
-            for (int whiteKeyIndex = 0; whiteKeyIndex < WHITE_KEYS; whiteKeyIndex++) {
-                int x = rightX - whiteKeyIndex * whiteKeyWidth - whiteKeyWidth / 2;
-                int y = topY + (bottomY - topY) / 10;
-                Point point = new Point(x, y);
-                int R = WHITE_KEY_R + whiteKeyIndex;
-                Imgproc.floodFill(layout, mask, point, new Scalar(R, 0, 0));
-                Imgproc.circle(layout, point, 5, new Scalar(R, 255, 255), 5);
-            }
+        for (int whiteKeyIndex = 0; whiteKeyIndex < WHITE_KEYS; whiteKeyIndex++) {
+            int x = rightX - whiteKeyIndex * whiteKeyWidth - whiteKeyWidth / 2;
+            int y = topY + (bottomY - topY) / 10;
+            Point point = new Point(x, y);
+            int R = WHITE_KEY_R + whiteKeyIndex;
+            Imgproc.floodFill(layout, mask, point, new Scalar(R, 0, 0));
+            Imgproc.circle(layout, point, 5, new Scalar(R, 255, 255), 5);
         }
-
-        // TODO: finger detection
-        int fingerTipRow = 0;
-        int fingerTipCol = 0;
-        String pianoKey = getPianoKey(fingerTipRow, fingerTipCol);
-        // TODO: send the piano key to arduino
-
-        Core.add(dst, layout, dst);
-        return dst;
     }
 
     Point[] getPianoVertices(List<MatOfPoint> contours, double minArea) {
