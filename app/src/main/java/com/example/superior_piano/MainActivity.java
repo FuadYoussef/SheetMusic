@@ -184,8 +184,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         ///////////////
 
 
-
-
         cameraBridgeViewBase = (JavaCameraView) findViewById(R.id.cameraViewer);
         cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
         cameraBridgeViewBase.setCvCameraViewListener(this);
@@ -249,7 +247,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     void handleKeyChange(String pianoKey) {
         Log.d("pkey", "" + pianoKey);
         // TODO: send the piano key to arduino
-        serialPort.write(pianoKey.getBytes());
+        if (serialPort != null) {
+            serialPort.write(pianoKey.getBytes());
+        }
     }
 
     @Override
@@ -269,11 +269,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             pianoKey = "t";
         } else {
             pianoKey = pianoKey
-                    .replace("C#", "y")
-                    .replace("D#", "u")
-                    .replace("F#", "i")
-                    .replace("G#", "o")
-                    .replace("A#", "p");
+                    .replace("c#", "y")
+                    .replace("d#", "u")
+                    .replace("f#", "i")
+                    .replace("g#", "o")
+                    .replace("a#", "p");
         }
         if (!pianoKey.equals(lastPianoKey)) {
             this.handleKeyChange(pianoKey);
