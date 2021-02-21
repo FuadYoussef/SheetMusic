@@ -16,7 +16,7 @@ public class Bruh extends JavaCameraView {
     }
 
     public void setEffect(String effect) {
-        mCamera.getParameters();
+        if (mCamera == null) return;
         Camera.Parameters params = mCamera.getParameters();
         params.setFlashMode(effect);
         mCamera.setParameters(params);

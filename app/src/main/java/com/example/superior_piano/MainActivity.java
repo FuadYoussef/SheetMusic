@@ -187,7 +187,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         cameraBridgeViewBase = (Bruh) findViewById(R.id.cameraViewer);
         cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
         cameraBridgeViewBase.setCvCameraViewListener(this);
-        cameraBridgeViewBase.setEffect(Camera.Parameters.FLASH_MODE_TORCH);
+
+        cameraBridgeViewBase.setOnClickListener(e -> {
+            cameraBridgeViewBase.setEffect(Camera.Parameters.FLASH_MODE_TORCH);
+        });
 
         //create camera listener callback
         baseLoaderCallback = new BaseLoaderCallback(this) {
