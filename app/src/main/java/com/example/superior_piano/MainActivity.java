@@ -1,11 +1,23 @@
 package com.example.superior_piano;
 
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbDeviceConnection;
+import android.hardware.usb.UsbManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.felhr.usbserial.UsbSerialDevice;
+import com.felhr.usbserial.UsbSerialInterface;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
@@ -22,12 +34,79 @@ import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
+    public final String ACTION_USB_PERMISSION = "com.hariharan.arduinousb.USB_PERMISSION";
+    UsbManager usbManager;
+    UsbDevice device;
+    UsbSerialDevice serialPort;
+    UsbDeviceConnection connection;
+    UsbSerialInterface.UsbReadCallback mCallback = new UsbSerialInterface.UsbReadCallback() { //Defining a Callback which triggers whenever data is read.
+        @Override
+        public void onReceivedData(byte[] arg0) {
+            String data = null;
+            try {
+                data = new String(arg0, "UTF-8");
+                data.concat("/n");
+                //tvAppend(textView, data);
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+
+
+        }
+    };
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() { //Broadcast Receiver to automatically start and stop the Serial connection.
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent.getAction().equals(ACTION_USB_PERMISSION)) {
+                boolean granted = intent.getExtras().getBoolean(UsbManager.EXTRA_PERMISSION_GRANTED);
+                if (granted) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
+                        connection = usbManager.openDevice(device);
+                    }
+                    serialPort = UsbSerialDevice.createUsbSerialDevice(device, connection);
+                    if (serialPort != null) {
+                        if (serialPort.open()) { //Set Serial Connection Parameters.
+                            serialPort.setBaudRate(115200); //was 9600
+                            serialPort.setDataBits(UsbSerialInterface.DATA_BITS_8);
+                            serialPort.setStopBits(UsbSerialInterface.STOP_BITS_1);
+                            serialPort.setParity(UsbSerialInterface.PARITY_NONE);
+                            serialPort.setFlowControl(UsbSerialInterface.FLOW_CONTROL_OFF);
+                            serialPort.read(mCallback);
+                            //tvAppend(textView,"Serial Connection Opened!\n");
+
+                        } else {
+                            Log.d("SERIAL", "PORT NOT OPEN");
+                            Toast.makeText(getParent(), "port not open", Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        Log.d("SERIAL", "PORT IS NULL");
+                        Toast.makeText(getParent(), "port is NULL", Toast.LENGTH_LONG).show();
+                    }
+                } else {
+                    Log.d("SERIAL", "PERM NOT GRANTED");
+                    Toast.makeText(getParent(), "perm not granted", Toast.LENGTH_LONG).show();
+                }
+            } else if (intent.getAction().equals(UsbManager.ACTION_USB_DEVICE_ATTACHED)) {
+                //onClickStart(startButton);
+                System.out.println("onclick start startbutton");
+            } else if (intent.getAction().equals(UsbManager.ACTION_USB_DEVICE_DETACHED)) {
+                //onClickStop(stopButton);
+                System.out.println("onclick stop stopbutton");
+            }
+        }
+
+        ;
+    };
+
     static int BLUR_SIZE = 3;
     static int CANNY_THRESHOLD = 200;
     static double MIN_PIANO_AREA_RATIO = 1.0 / 5;
@@ -53,6 +132,59 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
+            usbManager = (UsbManager) getSystemService(this.USB_SERVICE);
+        }
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_USB_PERMISSION);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        registerReceiver(broadcastReceiver, filter);
+
+
+        //from onclick start, may need to move to button function
+        HashMap<String, UsbDevice> usbDevices = null;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB_MR1) {
+            usbDevices = usbManager.getDeviceList();
+            //Toast.makeText(this, "made it to 1", Toast.LENGTH_LONG).show();
+        }
+        if (!usbDevices.isEmpty()) {
+            //Toast.makeText(this, "made it to 2", Toast.LENGTH_LONG).show();
+            boolean keep = true;
+            for (Map.Entry<String, UsbDevice> entry : usbDevices.entrySet()) {
+                device = entry.getValue();
+                int deviceVID = 0;
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB_MR1) {
+                    deviceVID = device.getVendorId();
+                    //Toast.makeText(this, "made it to 3", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, Integer.toString(deviceVID), Toast.LENGTH_LONG).show();
+                }
+                if (deviceVID == 0x2A03)//Arduino Vendor ID
+                {
+                    Toast.makeText(this, "made it to 4", Toast.LENGTH_LONG).show();
+                    PendingIntent pi = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
+                        usbManager.requestPermission(device, pi);
+                        //Toast.makeText(this, "made it to 5", Toast.LENGTH_LONG).show();
+                    }
+                    keep = false;
+                } else {
+                    //Toast.makeText(this, "made it to 6", Toast.LENGTH_LONG).show();
+                    connection = null;
+                    device = null;
+                }
+
+                if (!keep)
+                    break;
+            }
+        }
+
+
+        ///////////////
+
+
+
 
         cameraBridgeViewBase = (JavaCameraView) findViewById(R.id.cameraViewer);
         cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
@@ -117,6 +249,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     void handleKeyChange(String pianoKey) {
         Log.d("pkey", "" + pianoKey);
         // TODO: send the piano key to arduino
+        serialPort.write(pianoKey.getBytes());
     }
 
     @Override
@@ -133,14 +266,14 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
 
         if (pianoKey == null) {
-            pianoKey = "T";
+            pianoKey = "t";
         } else {
             pianoKey = pianoKey
-                    .replace("C#", "Y")
-                    .replace("D#", "U")
-                    .replace("F#", "I")
-                    .replace("G#", "O")
-                    .replace("A#", "P");
+                    .replace("C#", "y")
+                    .replace("D#", "u")
+                    .replace("F#", "i")
+                    .replace("G#", "o")
+                    .replace("A#", "p");
         }
         if (!pianoKey.equals(lastPianoKey)) {
             this.handleKeyChange(pianoKey);
@@ -250,7 +383,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
      * @return "C", "D#", ..., or null
      */
     String getPianoKey(int row, int col) {
-        String keys = "CDEFGAB";
+        String keys = "cdefgab";
         int R = (int) layout.get(row, col)[0];
         if (R == BLACK_KEY_R) {
             while (++col < layout.width()) {
