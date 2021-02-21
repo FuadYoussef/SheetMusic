@@ -111,6 +111,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     private CameraManager mCameraManager;
     private String mCameraId;
+    private boolean flash = false;
 
     static int BLUR_SIZE = 3;
     static int CANNY_THRESHOLD = 200;
@@ -215,10 +216,18 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         mCameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
             mCameraId = mCameraManager.getCameraIdList()[0];
-            mCameraManager.setTorchMode(mCameraId, true);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+
+        cameraBridgeViewBase.setOnClickListener(e -> {
+            try {
+                flash = !flash;
+                mCameraManager.setTorchMode(mCameraId, flash);
+            } catch (CameraAccessException ex) {
+                ex.printStackTrace();
+            }
+        });
     }
 
     @Override
