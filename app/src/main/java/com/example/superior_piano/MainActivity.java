@@ -266,7 +266,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
 
         if (pianoKey == null) {
-            pianoKey = "t";
+            pianoKey = "x";
         } else {
             pianoKey = pianoKey
                     .replace("c#", "y")
