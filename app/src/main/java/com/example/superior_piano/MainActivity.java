@@ -5,8 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.hardware.camera2.CameraAccessException;
-import android.hardware.camera2.CameraManager;
+import android.hardware.Camera;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -23,7 +22,6 @@ import com.felhr.usbserial.UsbSerialInterface;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
@@ -109,10 +107,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         ;
     };
 
-    private CameraManager mCameraManager;
-    private String mCameraId;
-    private boolean flash = false;
-
     static int BLUR_SIZE = 3;
     static int CANNY_THRESHOLD = 200;
     static double MIN_PIANO_AREA_RATIO = 1.0 / 5;
@@ -129,7 +123,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     String lastPianoKey = null;
 
     //view holder
-    CameraBridgeViewBase cameraBridgeViewBase;
+    Bruh cameraBridgeViewBase;
 
     //camera listener callback
     BaseLoaderCallback baseLoaderCallback;
@@ -190,9 +184,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         ///////////////
 
 
-        cameraBridgeViewBase = (JavaCameraView) findViewById(R.id.cameraViewer);
+        cameraBridgeViewBase = (Bruh) findViewById(R.id.cameraViewer);
         cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
         cameraBridgeViewBase.setCvCameraViewListener(this);
+        cameraBridgeViewBase.setEffect(Camera.Parameters.FLASH_MODE_TORCH);
 
         //create camera listener callback
         baseLoaderCallback = new BaseLoaderCallback(this) {
@@ -212,22 +207,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 }
             }
         };
-
-        mCameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-        try {
-            mCameraId = mCameraManager.getCameraIdList()[0];
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-
-        cameraBridgeViewBase.setOnClickListener(e -> {
-            try {
-                flash = !flash;
-                mCameraManager.setTorchMode(mCameraId, flash);
-            } catch (CameraAccessException ex) {
-                ex.printStackTrace();
-            }
-        });
     }
 
     @Override
