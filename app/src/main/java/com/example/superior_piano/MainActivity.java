@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.hardware.Camera;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -124,6 +123,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     //view holder
     Bruh cameraBridgeViewBase;
+    boolean flashOn = false;
+    boolean mode = true;
 
     //camera listener callback
     BaseLoaderCallback baseLoaderCallback;
@@ -189,7 +190,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         cameraBridgeViewBase.setCvCameraViewListener(this);
 
         cameraBridgeViewBase.setOnClickListener(e -> {
-            cameraBridgeViewBase.setEffect(Camera.Parameters.FLASH_MODE_TORCH);
+            mode = !mode;
+//            flashOn = !flashOn;
+//            cameraBridgeViewBase.setEffect(flashOn ? Camera.Parameters.FLASH_MODE_ON : Camera.Parameters.FLASH_MODE_OFF);
         });
 
         //create camera listener callback
@@ -261,7 +264,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Imgproc.cvtColor(dst, dst, Imgproc.COLOR_RGBA2RGB);
 
         this.updateLayout(inputFrame);
-        int[] coords = this.updateFinger(dst.clone());
+        Mat fingerDst = dst.clone();
+        int[] coords = this.updateFinger(fingerDst);
         String pianoKey = null;
         if (coords != null) {
             Log.d("coords", Arrays.toString(coords));
@@ -283,8 +287,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
         lastPianoKey = pianoKey;
 
-        Core.add(dst, layout, dst);
-        return dst;
+        if (mode) {
+            return fingerDst;
+        } else {
+            Core.add(dst, layout, dst);
+            return dst;
+        }
     }
 
     /**
@@ -295,9 +303,13 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         int width = src.cols();
         int height = src.rows();
         Imgproc.cvtColor(src, src, Imgproc.COLOR_RGBA2RGB);
-        Imgproc.GaussianBlur(src, src, new Size(23, 23), 0, 0);
+        Imgproc.cvtColor(src, src, Imgproc.COLOR_RGB2HLS);
+        Log.d("colorgg", Arrays.toString(src.get(height / 2, width / 2)));
 
-        int factor = 32;
+        Core.inRange(src, new Scalar(7, 90, 60), new Scalar(17, 160, 110), src);
+        Core.bitwise_not(src, src);
+
+        int factor = 4;
         int newWidth = width / factor;
         int newHeight = height / factor;
         Imgproc.resize(src, src, new Size(newWidth, newHeight));
@@ -306,14 +318,14 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             for (int col = 0; col < newWidth; col++) {
                 double r = layout.get(row * factor, col * factor)[0];
                 if (r == 0) continue;
-                double rgb[] = src.get(row, col);
-                double avg = Arrays.stream(rgb).average().orElse(Double.NaN);
-                double diff = Arrays.stream(rgb).map(v -> Math.abs(v - avg)).sum();
-                if (diff < 50) continue;
-                Log.d("rgb", Arrays.toString(rgb));
+                double v = src.get(row, col)[0];
+                if (v == 255.0) continue;
+                Imgproc.resize(src, src, new Size(width, height));
                 return new int[]{row * factor, col * factor};
             }
         }
+
+        Imgproc.resize(src, src, new Size(width, height));
 
         return null;
     }
@@ -368,7 +380,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
             if (area > minArea) {
                 MatOfPoint2f poly = new MatOfPoint2f();
-                Imgproc.approxPolyDP(new MatOfPoint2f(contours.get(i).toArray()), poly, 10, true);
+                Imgproc.approxPolyDP(new MatOfPoint2f(contours.get(i).toArray()), poly, 8, true);
                 Point[] vertices = poly.toArray();
                 if (vertices.length == 4) {
                     contours.remove(contour);
