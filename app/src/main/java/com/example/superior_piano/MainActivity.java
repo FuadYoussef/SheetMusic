@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -107,6 +109,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         ;
     };
 
+    private CameraManager mCameraManager;
+    private String mCameraId;
+
     static int BLUR_SIZE = 3;
     static int CANNY_THRESHOLD = 200;
     static double MIN_PIANO_AREA_RATIO = 1.0 / 5;
@@ -207,6 +212,13 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
         };
 
+        mCameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        try {
+            mCameraId = mCameraManager.getCameraIdList()[0];
+            mCameraManager.setTorchMode(mCameraId, true);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
